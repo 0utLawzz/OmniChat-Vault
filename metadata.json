@@ -1,0 +1,6 @@
+{
+  "name": "OmniChat Vault - Secure Chat Extractor & Supabase Sync",
+  "description": "Extract, organize, encrypt at rest, and sync multi-platform chats with Supabase, tags, folders, custom covers, real-time sync, and usage metrics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
