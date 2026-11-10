@@ -48,6 +48,7 @@ export interface ChatThread {
   lastMessageTimestamp?: string;
   messageCount: number;
   messages: ChatMessage[];
+  summary?: string; // One-sentence AI Quick Peek summary
   // Sync metadata
   syncedToSupabase?: boolean;
   lastSyncedAt?: string;
@@ -56,7 +57,7 @@ export interface ChatThread {
 
 export interface ActivityLog {
   id: string;
-  action: 'extract' | 'append' | 'sync' | 'export' | 'encrypt' | 'tag' | 'update_cover' | 'login' | 'delete';
+  action: 'extract' | 'append' | 'sync' | 'export' | 'encrypt' | 'tag' | 'update_cover' | 'login' | 'delete' | 'rename' | 'summarize';
   title: string;
   description: string;
   timestamp: string;

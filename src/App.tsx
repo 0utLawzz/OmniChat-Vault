@@ -496,6 +496,48 @@ export default function App() {
     }
   };
 
+  // Direct Rename Chat Thread
+  const handleRenameThread = async (threadId: string, newName: string) => {
+    const updated = threads.map(t => 
+      t.id === threadId ? { ...t, customAlias: newName.trim(), updatedAt: new Date().toISOString() } : t
+    );
+    setThreads(updated);
+    await saveStoredThreads(updated);
+
+    const target = updated.find(t => t.id === threadId);
+    if (target) {
+      logActivity(
+        'rename',
+        `Renamed Chat to "${newName.trim()}"`,
+        `Original name: ${target.contactName}`
+      );
+      if (supabaseConfig.isConnected) {
+        syncThreadToSupabase(target);
+      }
+    }
+  };
+
+  // Update Gemini Quick Peek Summary
+  const handleUpdateThreadSummary = async (threadId: string, summary: string) => {
+    const updated = threads.map(t => 
+      t.id === threadId ? { ...t, summary, updatedAt: new Date().toISOString() } : t
+    );
+    setThreads(updated);
+    await saveStoredThreads(updated);
+
+    const target = updated.find(t => t.id === threadId);
+    if (target) {
+      logActivity(
+        'summarize',
+        `Generated Quick Peek for ${target.customAlias || target.contactName}`,
+        `Summary: "${summary.slice(0, 60)}..."`
+      );
+      if (supabaseConfig.isConnected) {
+        syncThreadToSupabase(target);
+      }
+    }
+  };
+
   // Append single manual message/note
   const handleAppendManualMessage = async (threadId: string, msg: Omit<ChatMessage, 'id'>) => {
     const target = threads.find(t => t.id === threadId);
@@ -726,6 +768,8 @@ export default function App() {
                   onToggleThreadTag={handleToggleThreadTag}
                   onAppendManualMessage={handleAppendManualMessage}
                   onAutoLabelThread={handleAutoLabelThread}
+                  onRenameThread={handleRenameThread}
+                  onUpdateThreadSummary={handleUpdateThreadSummary}
                 />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-neutral-500 font-mono">

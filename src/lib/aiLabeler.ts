@@ -124,3 +124,55 @@ export async function suggestTagsForChat(
     source: 'heuristic',
   };
 }
+
+/**
+ * Generate a one-sentence "Quick Peek" executive summary of the entire chat thread
+ */
+export async function generateQuickPeekSummary(
+  contactName: string,
+  messages: Array<{ sender: string; content: string }>
+): Promise<string> {
+  if (!messages || messages.length === 0) {
+    return `No messages recorded for ${contactName} yet.`;
+  }
+
+  try {
+    const snippet = messages
+      .slice(0, 20)
+      .map(m => `${m.sender}: ${m.content.slice(0, 150)}`)
+      .join('\n');
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch('/api/ai/quick-peek', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contactName,
+        transcriptSnippet: snippet,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.summary && typeof data.summary === 'string') {
+        return data.summary.trim();
+      }
+    }
+  } catch (err) {
+    // Fall through to heuristic summary
+  }
+
+  // High quality heuristic one-sentence synthesis
+  const lastMsg = messages[messages.length - 1];
+  const firstMsg = messages[0];
+  const topics = analyzeTopicsHeuristically(messages);
+  const topicLabel = topics.join(' and ');
+
+  return `Conversation with ${contactName} reviewing ${topicLabel.toLowerCase()} milestones, concluding with ${lastMsg.sender}'s update: "${lastMsg.content.slice(0, 80).replace(/\n/g, ' ')}..."`;
+}
+

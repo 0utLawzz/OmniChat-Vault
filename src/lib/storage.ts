@@ -85,6 +85,7 @@ const INITIAL_THREADS: ChatThread[] = [
     updatedAt: '2026-11-08T11:45:00Z',
     lastMessageTimestamp: '2026-11-08T11:45:00Z',
     messageCount: 5,
+    summary: "Cloud infrastructure benchmarks show a 38% drop in p99 latency after pooler deployment, with production cutover set for Tuesday 2 AM UTC.",
     syncedToSupabase: true,
     lastSyncedAt: '2026-11-08T12:00:00Z',
     messages: [
@@ -144,6 +145,7 @@ const INITIAL_THREADS: ChatThread[] = [
     updatedAt: '2026-11-07T16:20:00Z',
     lastMessageTimestamp: '2026-11-07T16:20:00Z',
     messageCount: 3,
+    summary: "Confirmed AES-256 client-side encryption at rest using Web Crypto to fulfill ISO-27001 and GDPR compliance obligations.",
     syncedToSupabase: true,
     messages: [
       {
@@ -187,6 +189,7 @@ const INITIAL_THREADS: ChatThread[] = [
     updatedAt: '2026-11-08T08:30:00Z',
     lastMessageTimestamp: '2026-11-08T08:30:00Z',
     messageCount: 4,
+    summary: "Nova-4 synthesized a zero-latency hybrid synchronization architecture combining BroadcastChannel for browser tabs with Supabase Realtime CDC.",
     syncedToSupabase: false,
     messages: [
       {
@@ -236,6 +239,7 @@ const INITIAL_THREADS: ChatThread[] = [
     updatedAt: '2026-11-06T19:10:00Z',
     lastMessageTimestamp: '2026-11-06T19:10:00Z',
     messageCount: 2,
+    summary: "Elena confirmed photon entanglement calibration success with bit error rates dropping below 0.12%.",
     syncedToSupabase: true,
     messages: [
       {

@@ -92,6 +92,59 @@ ${transcriptSnippet || 'No content provided'}
   }
 });
 
+// AI Quick Peek (One-Sentence Summary) endpoint
+app.post('/api/ai/quick-peek', async (req, res) => {
+  try {
+    const { contactName, transcriptSnippet } = req.body;
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(200).json({
+        summary: `Discussion with ${contactName || 'contact'} focusing on key project milestones and operational action items.`,
+        source: 'heuristic',
+      });
+    }
+
+    const prompt = `Read the following chat thread with "${contactName || 'Contact'}" and generate a concise, informative, exactly ONE-SENTENCE summary that captures the essence of the conversation, key decisions, or current status for a quick executive overview.
+
+Chat Transcript Excerpt:
+${transcriptSnippet || 'No content provided'}
+`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: prompt,
+      config: {
+        systemInstruction: 'You are an executive assistant. Generate exactly ONE clear, punchy, informative single sentence summarizing the conversation essence.',
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            summary: {
+              type: Type.STRING,
+              description: 'A punchy, single-sentence summary of the conversation.',
+            },
+          },
+          required: ['summary'],
+        },
+      },
+    });
+
+    const jsonStr = (response.text ?? '{}').trim();
+    const parsed = JSON.parse(jsonStr);
+
+    return res.status(200).json({
+      summary: parsed.summary || `Conversation with ${contactName} regarding project deliverables and coordination.`,
+      source: 'gemini',
+    });
+  } catch (error: any) {
+    console.warn('Gemini quick-peek error (falling back):', error?.message || error);
+    return res.status(200).json({
+      summary: `Conversation with ${req.body.contactName || 'contact'} covering active topics and next steps.`,
+      source: 'heuristic',
+    });
+  }
+});
+
 // Mount Vite middleware in development
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {

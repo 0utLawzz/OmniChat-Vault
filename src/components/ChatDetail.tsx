@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Star, 
   Search, 
@@ -14,13 +14,17 @@ import {
   PlusCircle, 
   Sparkles,
   ChevronDown,
+  ChevronUp,
   X,
   Wand2,
   Terminal,
-  Cpu
+  Cpu,
+  Edit2,
+  RefreshCw,
+  Zap
 } from 'lucide-react';
 import { ChatThread, ChatMessage, Folder, ChatTag } from '../types';
-import { suggestTagsForChat } from '../lib/aiLabeler';
+import { suggestTagsForChat, generateQuickPeekSummary } from '../lib/aiLabeler';
 
 interface ChatDetailProps {
   thread: ChatThread;
@@ -35,6 +39,8 @@ interface ChatDetailProps {
   onToggleThreadTag: (threadId: string, tagName: string) => void;
   onAppendManualMessage: (threadId: string, message: Omit<ChatMessage, 'id'>) => void;
   onAutoLabelThread?: (threadId: string, newTags: string[]) => void;
+  onRenameThread: (threadId: string, newName: string) => void;
+  onUpdateThreadSummary: (threadId: string, summary: string) => void;
 }
 
 export const ChatDetail: React.FC<ChatDetailProps> = ({
@@ -50,6 +56,8 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
   onToggleThreadTag,
   onAppendManualMessage,
   onAutoLabelThread,
+  onRenameThread,
+  onUpdateThreadSummary,
 }) => {
   const [inChatSearch, setInChatSearch] = useState('');
   const [manualText, setManualText] = useState('');
@@ -60,7 +68,40 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
   const [isAiLabeling, setIsAiLabeling] = useState(false);
   const [aiNotification, setAiNotification] = useState<string | null>(null);
 
+  // Direct Inline Rename State
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(thread.customAlias || thread.contactName);
+
+  // Quick Peek State
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [copiedSummary, setCopiedSummary] = useState(false);
+
+  // Match navigation state
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setRenameValue(thread.customAlias || thread.contactName);
+    setIsRenaming(false);
+  }, [thread.id, thread.customAlias, thread.contactName]);
+
   const currentFolder = folders.find(f => f.id === thread.folderId);
+
+  // Count total matches in messages for search indicator
+  const totalMatchesCount = useMemo(() => {
+    if (!inChatSearch.trim()) return 0;
+    const q = inChatSearch.toLowerCase();
+    let count = 0;
+    thread.messages.forEach(m => {
+      const text = m.content.toLowerCase();
+      let pos = 0;
+      while ((pos = text.indexOf(q, pos)) !== -1) {
+        count++;
+        pos += q.length;
+      }
+    });
+    return count;
+  }, [thread.messages, inChatSearch]);
 
   // Filter messages based on in-chat search
   const filteredMessages = useMemo(() => {
@@ -75,6 +116,13 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
     navigator.clipboard.writeText(`${msg.sender} (${new Date(msg.timestamp).toLocaleString()}):\n${msg.content}`);
     setCopiedMsgId(msg.id);
     setTimeout(() => setCopiedMsgId(null), 2000);
+  };
+
+  const handleSaveRename = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!renameValue.trim()) return;
+    onRenameThread(thread.id, renameValue.trim());
+    setIsRenaming(false);
   };
 
   const handleSendManual = (e: React.FormEvent) => {
@@ -111,13 +159,40 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
     }
   };
 
-  const highlightMatch = (text: string, query: string) => {
+  // Generate / Regenerate Gemini Quick Peek One-Sentence Summary
+  const handleGenerateQuickPeek = async () => {
+    setIsSummarizing(true);
+    try {
+      const summaryText = await generateQuickPeekSummary(
+        thread.customAlias || thread.contactName,
+        thread.messages
+      );
+      onUpdateThreadSummary(thread.id, summaryText);
+    } catch (err) {
+      console.warn('Failed to generate quick peek:', err);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const handleCopySummary = () => {
+    if (!thread.summary) return;
+    navigator.clipboard.writeText(thread.summary);
+    setCopiedSummary(true);
+    setTimeout(() => setCopiedSummary(false), 2000);
+  };
+
+  // Highlight matches with glowing orange background
+  const highlightMatchWithGlow = (text: string, query: string) => {
     if (!query.trim()) return text;
     const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
     const parts = text.split(regex);
     return parts.map((part, i) =>
       regex.test(part) ? (
-        <mark key={i} className="bg-orange-500/40 text-orange-200 rounded px-0.5 font-bold">
+        <mark
+          key={i}
+          className="bg-orange-500/35 text-orange-200 border border-orange-500/80 shadow-[0_0_12px_rgba(255,107,0,0.6)] rounded px-1 py-0.5 font-bold glow-orange transition-all"
+        >
           {part}
         </mark>
       ) : (
@@ -176,11 +251,49 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
             )}
 
             <div>
+              {/* Title with Instant Rename Feature */}
               <div className="flex items-center gap-2 flex-wrap font-sans">
-                <h2 className="text-base sm:text-lg font-black text-white font-display tracking-tight">
-                  {thread.customAlias || thread.contactName}
-                </h2>
-                {thread.customAlias && (
+                {isRenaming ? (
+                  <form onSubmit={handleSaveRename} className="flex items-center gap-1.5 font-mono">
+                    <input
+                      type="text"
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      className="text-sm font-bold bg-black border border-orange-500 text-white rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-orange-500 glow-border"
+                      autoFocus
+                    />
+                    <button
+                      type="submit"
+                      className="p-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-black glow-orange transition"
+                      title="Save name"
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsRenaming(false)}
+                      className="p-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition"
+                      title="Cancel"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-black text-white font-display tracking-tight">
+                      {thread.customAlias || thread.contactName}
+                    </h2>
+                    <button
+                      onClick={() => setIsRenaming(true)}
+                      className="p-1 rounded-md text-neutral-400 hover:text-orange-400 hover:bg-neutral-900 border border-transparent hover:border-orange-500/30 transition"
+                      title="Rename this chat"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-orange-500" />
+                    </button>
+                  </div>
+                )}
+
+                {thread.customAlias && !isRenaming && (
                   <span className="text-xs text-neutral-400 font-mono">
                     [{thread.contactName}]
                   </span>
@@ -314,6 +427,16 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
 
           {/* Action Toolbar */}
           <div className="flex items-center gap-2 flex-wrap font-mono">
+            {/* Quick Rename Chat Button */}
+            <button
+              onClick={() => setIsRenaming(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold bg-[#121216] hover:bg-neutral-800 text-orange-400 border border-orange-500/30 transition"
+              title="Rename this chat thread"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span>RENAME</span>
+            </button>
+
             {/* Append Data Button */}
             <button
               onClick={() => onOpenAppendExtractor(thread)}
@@ -360,24 +483,34 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
           </div>
         </div>
 
-        {/* In-Chat Search Bar */}
+        {/* In-Chat Search Bar with Match Counter & Glowing Results */}
         <div className="px-4 py-2 bg-[#050507] border-t border-neutral-800 flex items-center justify-between gap-3 font-mono">
-          <div className="relative flex-1 max-w-md">
+          <div className="relative flex-1 max-w-md flex items-center">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-orange-500" />
             <input
               type="text"
               value={inChatSearch}
               onChange={e => setInChatSearch(e.target.value)}
-              placeholder="Filter words inside transcript..."
-              className="w-full text-xs pl-8 pr-7 py-1.5 rounded-lg border border-neutral-800 bg-[#0d0d12] text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              placeholder="Search & highlight text across this conversation..."
+              className="w-full text-xs pl-8 pr-28 py-1.5 rounded-lg border border-neutral-800 bg-[#0d0d12] text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
             />
             {inChatSearch && (
-              <button
-                onClick={() => setInChatSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
-              >
-                <X className="w-3 h-3" />
-              </button>
+              <div className="absolute right-2 flex items-center gap-1.5">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  totalMatchesCount > 0
+                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40 glow-border'
+                    : 'bg-neutral-800 text-neutral-500'
+                }`}>
+                  {totalMatchesCount > 0 ? `${totalMatchesCount} MATCH${totalMatchesCount === 1 ? '' : 'ES'}` : '0 MATCHES'}
+                </span>
+                <button
+                  onClick={() => setInChatSearch('')}
+                  className="text-neutral-400 hover:text-white p-0.5"
+                  title="Clear search"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             )}
           </div>
 
@@ -388,8 +521,61 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
         </div>
       </div>
 
+      {/* GEMINI QUICK PEEK: One-Sentence Summary Banner */}
+      <div className="px-4 py-2.5 sm:px-6 bg-[#08080b] border-b border-orange-500/20 font-mono">
+        <div className="p-3 rounded-xl bg-[#0f0f14] border border-orange-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 glow-border">
+          <div className="flex items-start sm:items-center gap-2.5 flex-1">
+            <div className="p-1.5 rounded-lg bg-orange-500/20 text-orange-400 border border-orange-500/40 glow-orange flex-shrink-0">
+              <Zap className="w-4 h-4 fill-orange-400" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1">
+                  <span>QUICK_PEEK</span>
+                  <span className="text-neutral-500">•</span>
+                  <span className="text-neutral-400">GEMINI 3.8 FLASH</span>
+                </span>
+              </div>
+              {thread.summary ? (
+                <p className="text-xs sm:text-sm text-neutral-200 mt-0.5 font-sans leading-snug">
+                  "{thread.summary}"
+                </p>
+              ) : (
+                <p className="text-xs text-neutral-400 italic mt-0.5 font-sans">
+                  No Quick Peek generated yet. Click to generate a 1-sentence AI summary of this conversation.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 self-end sm:self-center flex-shrink-0">
+            {thread.summary && (
+              <button
+                onClick={handleCopySummary}
+                className="p-1.5 rounded-lg bg-black/60 hover:bg-neutral-800 text-neutral-400 hover:text-orange-400 border border-neutral-800 transition"
+                title="Copy Quick Peek summary"
+              >
+                {copiedSummary ? <Check className="w-3.5 h-3.5 text-orange-400" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            )}
+
+            <button
+              onClick={handleGenerateQuickPeek}
+              disabled={isSummarizing}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-orange-600 hover:bg-orange-500 text-black glow-orange disabled:opacity-50 transition active:scale-95"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSummarizing ? 'animate-spin' : ''}`} />
+              <span>{isSummarizing ? 'ANALYZING...' : thread.summary ? 'REGENERATE' : 'GENERATE QUICK PEEK'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 font-sans">
+      <div 
+        ref={messagesScrollRef}
+        className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 font-sans"
+      >
         {filteredMessages.length === 0 ? (
           <div className="text-center py-12 text-neutral-500 text-xs font-mono">
             {inChatSearch ? 'No messages match your search filter.' : 'No messages in this chat.'}
@@ -420,7 +606,7 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
                   </button>
                 </div>
 
-                {/* Message Bubble */}
+                {/* Message Bubble with Glowing Text Highlighting */}
                 <div
                   className={`relative max-w-xl rounded-2xl px-4 py-2.5 text-xs sm:text-sm leading-relaxed shadow-sm ${
                     isMe
@@ -431,7 +617,7 @@ export const ChatDetail: React.FC<ChatDetailProps> = ({
                   }`}
                 >
                   <p className="whitespace-pre-wrap">
-                    {highlightMatch(msg.content, inChatSearch)}
+                    {highlightMatchWithGlow(msg.content, inChatSearch)}
                   </p>
                 </div>
               </div>
